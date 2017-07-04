@@ -29,16 +29,22 @@ class IREPLWrapper(replwrap.REPLWrapper):
     def __init__(self, cmd_or_spawn, orig_prompt, prompt_change,
                  extra_init_cmd=None, line_output_callback=None):
         self.line_output_callback = line_output_callback
+        self.prompt_list = []
+        self.prompt_list_ext = []
+        self.newline_pattern = [re.compile(r'\r\n')]
         replwrap.REPLWrapper.__init__(self, cmd_or_spawn, orig_prompt,
                                       prompt_change, extra_init_cmd=extra_init_cmd)
+        self.prompt_list.append(re.compile(re.escape(self.prompt)))
+        self.prompt_list.append(re.compile(re.escape(self.continuation_prompt)))
+        self.prompt_list_ext.append(re.compile(r'(\w+(@\w+(:.+)?))(\[\d+\]|\(\d+\))?([$%#>]\s*)'))
+        self.compile_pattern_list = self.prompt_list + self.newline_pattern + self.prompt_list_ext
 
     def _expect_prompt(self, timeout=-1):
         if timeout == None:
             # "None" means we are executing code from a Jupyter cell by way of the run_command
             # in the do_execute() code below, so do incremental output.
             while True:
-                pos = self.child.expect_exact([self.prompt, self.continuation_prompt, u'\r\n'],
-                                              timeout=None)
+                pos = self.child.expect_list(self.compile_pattern_list, timeout=timeout)
                 if pos == 2:
                     # End of line received
                     self.line_output_callback(self.child.before + '\n')
@@ -46,10 +52,15 @@ class IREPLWrapper(replwrap.REPLWrapper):
                     if len(self.child.before) != 0:
                         # prompt received, but partial line precedes it
                         self.line_output_callback(self.child.before)
+                    if pos >= 3:
+                        pos = 0
                     break
         else:
             # Otherwise, use existing non-incremental code
-            pos = replwrap.REPLWrapper._expect_prompt(self, timeout=timeout)
+            if self.prompt_list:
+                pos = self.child.expect_list(self.prompt_list + self.prompt_list_ext, timeout=timeout)
+            else:
+                pos = self.child.expect_exact([self.prompt, self.continuation_prompt], timeout=timeout)
 
         # Prompt received, so return normally
         return pos
