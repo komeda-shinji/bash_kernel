@@ -36,7 +36,7 @@ class IREPLWrapper(replwrap.REPLWrapper):
                                       prompt_change, extra_init_cmd=extra_init_cmd)
         self.prompt_list.append(re.compile(re.escape(self.prompt)))
         self.prompt_list.append(re.compile(re.escape(self.continuation_prompt)))
-        self.prompt_list_ext.append(re.compile(r'(\w+(@\w+(:.+)?))(\[\d+\]|\(\d+\))?([$%#>]\s*)'))
+        self.prompt_list_ext.append(re.compile(r'(\w[-\d\w]*?(@\w[-\d\w]*(:.+?)?)?)(\[\d+\]|\(\d+\))?([$%#>]\s*)'))
         self.compile_pattern_list = self.prompt_list + self.newline_pattern + self.prompt_list_ext
 
     def _expect_prompt(self, timeout=-1):
