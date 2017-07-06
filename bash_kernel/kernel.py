@@ -4,6 +4,7 @@ import pexpect
 
 from subprocess import check_output
 import os.path
+import os
 
 import re
 import signal
@@ -64,6 +65,31 @@ class IREPLWrapper(replwrap.REPLWrapper):
 
         # Prompt received, so return normally
         return pos
+
+    def run_command(self, command, timeout=-1):
+        # Split up multiline commands and feed them in bit-by-bit
+        cmdlines = command.splitlines()
+        # splitlines ignores trailing newlines - add it back in manually
+        if command.endswith('\n'):
+            cmdlines.append('')
+        if not cmdlines:
+            raise ValueError("No command was given")
+
+        res = []
+        self.child.sendline(cmdlines[0])
+        for line in cmdlines[1:]:
+            self._expect_prompt(timeout=timeout)
+            res.append(self.child.before)
+            self.child.sendline(line)
+
+        # Command was fully submitted, now wait for the next prompt
+        if self._expect_prompt(timeout=timeout) == 1:
+            # We got the continuation prompt - command was incomplete
+            os.kill(os.tcgetpgrp(self.child.child_fd), signal.SIGINT)
+            self._expect_prompt(timeout=5)
+            raise ValueError("Continuation prompt found - input was incomplete:\n"
+                             + command)
+        return u''.join(res + [self.child.before])
 
 class BashKernel(Kernel):
     implementation = 'bash_kernel'
@@ -161,6 +187,9 @@ class BashKernel(Kernel):
         except EOF:
             output = self.bashwrapper.child.before + 'Restarting Bash'
             self._start_bash()
+            self.process_output(output)
+        except ValueError as e:
+            output = self.bashwrapper.child.before + str(e)
             self.process_output(output)
 
         if interrupted:
